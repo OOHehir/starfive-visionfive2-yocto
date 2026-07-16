@@ -1,0 +1,64 @@
+fbdev backend: rotate 90 CCW + 2x scale for the portrait 800x1280 DSI panel,
+guard missing /dev/input, attract-demo fallback without a keyboard.
+
+Upstream-Status: Inappropriate [board-specific demo configuration]
+
+diff --git a/doomgeneric/doomgeneric_linuxvt.c b/doomgeneric/doomgeneric_linuxvt.c
+index ed94dd9..1005057 100644
+--- a/doomgeneric/doomgeneric_linuxvt.c
++++ b/doomgeneric/doomgeneric_linuxvt.c
+@@ -368,6 +368,10 @@ static void checkInputDevs() {
+ 
+ 	/* check for devices */
+ 	dir = opendir("/dev/input");
++	if (!dir) {
++		printf("WARNING: /dev/input not present; running without input\n");
++		return;
++	}
+ 
+ 	while ((dp = readdir(dir)) != NULL) {
+ 		char fullpath[268]; /* d_name is 256 bytes */
+@@ -454,22 +458,33 @@ void DG_Init() {
+ 	checkInputDevs();
+ 	
+ 	if (numInputFds == 0)
+-		I_Error("Failed to find any compatible input device, see the logs above for potential problems");
++		printf("WARNING: no input device found; running attract demo\n");
+ 
+ 	// get the start time
+ 	gettimeofday(&startTime, NULL);
+ }
+ 
+ void DG_DrawFrame() {
+-	// we need to do it line-by-line like this to account for the
+-	// fact that the system framebuffer resolution is very likely
+-	// larger than the doomgeneric render resolution.
+-	for (int line = 0; line < DOOMGENERIC_RESY; line++) {
+-		memcpy(
+-			(void *)((uintptr_t)(fbPtr) + (fbStride * line) + fbOffsetY + fbOffsetX),
+-				(void *)(((uintptr_t)DG_ScreenBuffer) + (DOOMGENERIC_RESX * line * fbBytesPerPixel)),
+-			 (fbBytesPerPixel * DOOMGENERIC_RESX)
+-		);
++	// The 10.1-DSI-TOUCH-A is a portrait 800x1280 panel mounted landscape.
++	// Rotate the 640x400 Doom frame 90 CCW and 2x-scale it to fill the panel
++	// as a 1280x800 landscape image. fb is 32bpp XRGB8888 (== DG_ScreenBuffer),
++	// so this is a direct u32 write. Flip the sx/sy axis inversions below if it
++	// comes out mirrored/upside-down on hardware.
++	uint32_t *fb  = (uint32_t *)fbPtr;
++	uint32_t *src = (uint32_t *)DG_ScreenBuffer;
++	unsigned int strpx = fbStride / 4;            /* fb pixels per row */
++
++	for (unsigned int y = 0; y < fbHeight; y++) {     /* panel rows */
++		unsigned int sx = y >> 1;                 /* doom X, 2x scale */
++		if (sx >= DOOMGENERIC_RESX)
++			continue;
++		uint32_t *fbrow = fb + (size_t)y * strpx;
++		for (unsigned int x = 0; x < fbWidth; x++) {  /* panel cols */
++			unsigned int sy = (fbWidth - 1 - x) >> 1;
++			if (sy >= DOOMGENERIC_RESY)
++				continue;
++			fbrow[x] = src[(size_t)sy * DOOMGENERIC_RESX + sx];
++		}
+ 	}
+ 
+ 	checkKeys();

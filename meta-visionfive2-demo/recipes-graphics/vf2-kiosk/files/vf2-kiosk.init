@@ -1,0 +1,73 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          vf2-kiosk
+# Required-Start:    $local_fs weston
+# Required-Stop:     $local_fs
+# Default-Start:     5
+# Default-Stop:      0 1 6
+# Short-Description: Fullscreen status-page kiosk on the DSI panel
+### END INIT INFO
+#
+# Launches vf2-kiosk as a Weston client once the compositor socket exists.
+# Weston runs as the `weston` user (weston-init); the kiosk must share its
+# XDG_RUNTIME_DIR + WAYLAND_DISPLAY. GPU is disabled in the bring-up image,
+# so force WebKit onto its software paths.
+
+NAME=vf2-kiosk
+BIN=/usr/bin/vf2-kiosk
+
+find_socket() {
+    for d in /run/user/*; do
+        for s in "$d"/wayland-*; do
+            case "$s" in *.lock) continue;; esac
+            [ -S "$s" ] && { echo "$s"; return 0; }
+        done
+    done
+    return 1
+}
+
+case "$1" in
+  start)
+    (
+      # Weston starts just before us at the same runlevel — wait for its socket.
+      n=0
+      while [ $n -lt 60 ]; do
+          SOCK=$(find_socket) && break
+          sleep 0.5; n=$((n+1))
+      done
+      [ -n "$SOCK" ] || { echo "$NAME: no wayland socket - not starting"; exit 0; }
+      RUNDIR=$(dirname "$SOCK")
+      OWNER=$(stat -c %U "$RUNDIR")
+      export XDG_RUNTIME_DIR="$RUNDIR"
+      export WAYLAND_DISPLAY=$(basename "$SOCK")
+      # Writable caches for fontconfig etc. (su -p keeps our env; busybox has
+      # no getent, read /etc/passwd directly).
+      export HOME=$(awk -F: -v u="$OWNER" '$1==u{print $6}' /etc/passwd)
+      export XDG_CACHE_HOME="$RUNDIR/cache"
+      mkdir -p "$XDG_CACHE_HOME" && chown "$OWNER" "$XDG_CACHE_HOME"
+      # When the GPU is disabled (pixman weston, no usable EGL) GTK4's GL
+      # renderer SIGSEGVs and webkit shows a white screen — force software
+      # paths. Harmless (env only biases renderer choice) when the GPU is up.
+      if ! lsmod | grep -q pvrsrvkm; then
+          export GSK_RENDERER=cairo
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export WEBKIT_DISABLE_COMPOSITING_MODE=1
+          export WEBKIT_DISABLE_DMABUF_RENDERER=1
+      fi
+      echo "Starting $NAME on $WAYLAND_DISPLAY (user $OWNER)"
+      exec su "$OWNER" -p -c "$BIN" >/dev/null 2>&1
+    ) &
+    ;;
+  stop)
+    echo "Stopping $NAME"
+    killall vf2-kiosk 2>/dev/null
+    ;;
+  restart)
+    "$0" stop; sleep 1; "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac
+exit 0

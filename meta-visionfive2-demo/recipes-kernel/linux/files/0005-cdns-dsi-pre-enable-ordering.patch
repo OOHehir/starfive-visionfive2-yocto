@@ -1,0 +1,99 @@
+starfive/cdns-dsi: bring the host link up in .pre_enable (fix panel ordering)
+
+On the JH7110 the vendor cdns-dsi bridge implemented only .enable, which did
+everything in one shot: pm_runtime_get, cdns_dsi_check_conf, cdns_dsi_init_link
+(PHY configure + power-on + lane start), then drm_panel_prepare + drm_panel_enable,
+then the video-timing registers + VID_EN.
+
+But the ILI9881C panel sets drm_panel.prepare_prev_first, so its panel_bridge
+runs drm_panel_prepare (the panel init DCS) during the pre_enable phase - i.e.
+BEFORE the host's .enable ever calls cdns_dsi_init_link(). The panel therefore
+sent its whole init sequence before the DSI link/PHY were configured; the host
+then reconfigured the PHY for video, and the redundant drm_panel_prepare/enable
+inside .enable were skipped ("Skipping prepare of already prepared panel"). Net
+result on the 10.1" ILI9881C panel: link locks, video streams, backlight on, but
+the glass stays black because the init never landed on a configured link.
+
+Give the bridge a real .pre_enable that does pm_runtime_get + check_conf +
+init_link, and drop the now-redundant manual drm_panel_prepare/enable and the
+duplicate pm_runtime_get from .enable. With prepare_prev_first already set on the
+panel, the DRM core now orders it: host .pre_enable (link + PHY up at the final
+HFP-adjusted rate) -> panel prepare (init DCS on a live link) -> host .enable
+(video stream) -> panel enable (display-on). pm_runtime stays balanced against
+the existing pm_runtime_put in .disable.
+
+Upstream-Status: Inappropriate [vendor-driver integration]
+
+--- a/drivers/gpu/drm/verisilicon/starfive_drm_dsi.c
++++ b/drivers/gpu/drm/verisilicon/starfive_drm_dsi.c
+@@ -1067,6 +1067,33 @@
+ 	dsi->link_initialized = true;
+ }
+ 
++static void cdns_dsi_bridge_pre_enable(struct drm_bridge *bridge)
++{
++	struct cdns_dsi_input *input = bridge_to_cdns_dsi_input(bridge);
++	struct cdns_dsi *dsi = input_to_dsi(input);
++	struct drm_display_mode *mode;
++	struct cdns_dsi_cfg dsi_cfg;
++
++	if (WARN_ON(pm_runtime_get_sync(dsi->base.dev) < 0))
++		return;
++
++	/*
++	 * Bring the DSI host link up (PHY configured + powered, lanes started)
++	 * BEFORE the panel is prepared. The ILI9881C panel sets
++	 * prepare_prev_first, so once the host provides a .pre_enable the DRM
++	 * bridge core runs us first and the panel init DCS then goes out on a
++	 * fully-configured link. Previously the host had no .pre_enable: the
++	 * panel init ran first (before init_link), the host then reconfigured
++	 * the PHY for video, and the redundant drm_panel_prepare/enable in
++	 * .enable were no-ops -> the panel never displayed. check_conf() here
++	 * programs output->phy_opts so init_link()'s phy_configure() uses the
++	 * final (HFP-adjusted) rate, matching the video that follows.
++	 */
++	mode = &bridge->encoder->crtc->state->adjusted_mode;
++	cdns_dsi_check_conf(dsi, mode, &dsi_cfg, false);
++	cdns_dsi_init_link(dsi);
++}
++
+ static void cdns_dsi_bridge_enable(struct drm_bridge *bridge)
+ {
+ 	struct cdns_dsi_input *input = bridge_to_cdns_dsi_input(bridge);
+@@ -1081,23 +1108,19 @@
+ 	int vrefresh;
+ 	u32 div;
+ 
+-	if (WARN_ON(pm_runtime_get_sync(dsi->base.dev) < 0))
+-		return;
+-
+ 	mode = &bridge->encoder->crtc->state->adjusted_mode;
+ 	nlanes = output->dev->lanes;
+ 
+ 	//WARN_ON_ONCE(cdns_dsi_check_conf(dsi, mode, &dsi_cfg, false));//original //7110 mode illegal,need confirm //cannot disable
+ 	cdns_dsi_check_conf(dsi, mode, &dsi_cfg, false);
+ 	//cdns_dsi_hs_init(dsi);
++	/*
++	 * Link bring-up moved to .pre_enable; the panel is now prepared/enabled
++	 * by its own panel_bridge in the correct order (init after our
++	 * pre_enable, display-on after this .enable programs the video stream).
++	 */
+ 	cdns_dsi_init_link(dsi);
+ 
+-	if (output->panel)
+-		drm_panel_prepare(output->panel);
+-
+-	if (output->panel)
+-		drm_panel_enable(output->panel);
+-
+ 	writel(HBP_LEN(dsi_cfg.hbp) | HSA_LEN(dsi_cfg.hsa),
+ 	       dsi->regs + VID_HSIZE1);
+ 	writel(HFP_LEN(dsi_cfg.hfp) | HACT_LEN(dsi_cfg.hact),
+@@ -1226,6 +1249,7 @@
+ 	.attach = cdns_dsi_bridge_attach,
+ 	.mode_valid = cdns_dsi_bridge_mode_valid,
+ 	.disable = cdns_dsi_bridge_disable,
++	.pre_enable = cdns_dsi_bridge_pre_enable,
+ 	.enable = cdns_dsi_bridge_enable,
+ };
+ 

@@ -1,0 +1,17 @@
+# bblayers.conf — StarFive VisionFive 2 demo (wrynose)
+#
+# Layers live under ../sources (gitignored, pinned by SHA in
+# setup-layers.json and the README "Source Versions" table).
+# Regenerate a fresh checkout with:  ./setup-layers  (or clone per README).
+
+POKY_LAYERS = "${TOPDIR}/../sources"
+
+BBLAYERS ?= " \
+  ${POKY_LAYERS}/oe-core/meta \
+  ${POKY_LAYERS}/meta-yocto/meta-poky \
+  ${POKY_LAYERS}/meta-openembedded/meta-oe \
+  ${POKY_LAYERS}/meta-openembedded/meta-python \
+  ${POKY_LAYERS}/meta-openembedded/meta-multimedia \
+  ${POKY_LAYERS}/meta-riscv \
+  ${POKY_LAYERS}/../meta-visionfive2-demo \
+"

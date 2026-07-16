@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: GPL-2.0 OR MIT
+/*
+ * VisionFive 2 v1.3B + Luckfox 10.1-DSI-TOUCH-A (ILI9881C, 800x1280, 2-lane)
+ * on the board's 2-lane MIPI-DSI port (15-pin RPi-DSI connector; datasheet
+ * Table 5-2). Built as a separate DTB selected at netboot/flash time so the
+ * stock HDMI-only DTB stays available.
+ *
+ * On-hardware facts established during bring-up (see JOURNAL / docs/DSI_TOUCH.md):
+ *   - i2c-2 (the DSI connector's DSI_I2C on GPIO2/3) with the panel powered
+ *     answers at 0x45 (backlight MCU) and 0x5d (GT9271 touch). The stock dtsi's
+ *     guesses (gt911@0x14, ft5406@0x38, seeed@0x45-as-Atmel) are wrong for this
+ *     panel and are removed below.
+ *
+ * TUNABLES that may need a hardware iteration (R3):
+ *   - compatible: "waveshare,10inch1" — the verbatim Luckfox "10inch1" ILI9881C
+ *     init (register-0xE0 bank model, added by 0004). This is the same glass and
+ *     sequence proven on RK3506 in the sibling luckfox-yocto project; it replaces
+ *     the earlier "ampire,am8001280g" stand-in that left the panel dark.
+ *   - dsi,lanes = 2 (this panel + the VF2 2-lane port). Read by the ili9881c
+ *     lanes-from-DT patch.
+ *   - rotation = 270 (portrait 800x1280 panel mounted landscape). Flip to 90 if
+ *     upside-down.
+ *   - reset-gpios: omitted (no panel reset routed on the 15-pin connector). Add
+ *     if the panel needs an explicit reset pulse.
+ */
+
+/dts-v1/;
+
+#include "jh7110-starfive-visionfive-2-v1.3b.dts"
+
+/ {
+	model = "StarFive VisionFive 2 v1.3B + 10.1in DSI panel";
+};
+/*
+ * Note: the ili9881c driver calls devm_regulator_get(dev, "power"). We do NOT
+ * declare a "power-supply" — the panel is always powered from the header, and
+ * CONFIG_REGULATOR_FIXED_VOLTAGE is off in this kernel, so a regulator-fixed
+ * node would never register and the panel would defer forever ("Couldn't get
+ * our power regulator"). With no power-supply property the regulator core hands
+ * back a dummy, and the panel probes.
+ */
+
+/* The cdns DSI host binds only one DSI device at a time, so keep the radxa
+ * panel from grabbing it — but DISABLE rather than delete, because dsi1_output
+ * still references its panel_out1 endpoint (deleting it dangles that phandle). */
+&panel_radxa {
+	status = "disabled";
+};
+
+&i2c2 {
+	/* Drop the stock example-panel / wrong-address nodes. seeed is deleted
+	 * (not disabled) to free I2C 0x45 for the backlight MCU below; its
+	 * panel_out0 endpoint is safe to remove because &dsi0_output is
+	 * repointed to our panel further down. */
+	/delete-node/ seeed_plane_i2c@45;
+	/delete-node/ touchscreen@14;
+	/delete-node/ tinker_ft5406@38;
+
+	/* Backlight MCU (waveshare-style) at 0x45 — confirmed present. */
+	ws_backlight: backlight@45 {
+		compatible = "waveshare,dsi-backlight";
+		reg = <0x45>;
+		default-brightness-level = <200>;
+		max-brightness-level = <255>;
+		min-brightness-level = <0>;
+	};
+
+	/* GT9271 capacitive touch at 0x5d — confirmed present. This panel has
+	 * no touch-INT line routed to a host GPIO (as on the luckfox carrier),
+	 * so the goodix driver will need poll-mode if irq-less probe fails; add
+	 * the goodix poll-mode patch then. Left minimal (no irq/reset) for the
+	 * first display-only bring-up. */
+	gt9271: touchscreen@5d {
+		compatible = "goodix,gt9271";
+		reg = <0x5d>;
+	};
+};
+
+/* Attach the ILI9881C as a DSI peripheral (channel 0) on the DSI host. The
+ * StarFive cdns_dsi host calls mipi_dsi_host_register(), so this child node is
+ * instantiated as a mipi_dsi_device and bound by panel-ilitek-ili9881c via
+ * of_drm_find_panel() over the OF-graph below. */
+&mipi_dsi {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	panel@0 {
+		compatible = "waveshare,10inch1";
+		reg = <0>;
+		dsi,lanes = <2>;
+		/* Per-lane HS bit rate for the M31 DPHY PLL. Must be a value the
+		 * host would compute for this mode AND an exact entry in the m31
+		 * PLL table (7110-m31-dphy.h, 10 MHz steps). For the "10inch1"
+		 * mode (70 MHz pixel clock, 800x1280, 2 lanes, RGB888) the host
+		 * computes 70M * 24 / 2 = 840 Mbps/lane. */
+		dsi,hs-rate = <840000000>;
+		backlight = <&ws_backlight>;
+		rotation = <270>;
+
+		port {
+			ili_panel_in: endpoint {
+				remote-endpoint = <&dsi0_output>;
+			};
+		};
+	};
+};
+
+/* Repoint DSI output 0 from the (now-deleted) seeed panel to the ILI9881C. */
+&dsi0_output {
+	remote-endpoint = <&ili_panel_in>;
+};

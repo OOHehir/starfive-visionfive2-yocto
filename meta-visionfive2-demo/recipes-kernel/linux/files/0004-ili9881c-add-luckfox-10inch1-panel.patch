@@ -1,0 +1,344 @@
+ili9881c: add the Luckfox 10.1-DSI-TOUCH-A ("10inch1") panel
+
+The 10.1-DSI-TOUCH-A glass (ILI9881C, 800x1280, 2-lane) does NOT use the
+0xFF,0x98,0x81 page switch the driver's ILI9881C_SWITCH_PAGE_INSTR emits; it
+selects its manufacturer command banks (CMD2 BK0/1/2) through register 0xE0
+(the E0 00 / E1 93 / E2 65 / E3 F8 gate). Driving it with any of the existing
+0xFF-page descriptors (e.g. ampire,am8001280g used as a stand-in) leaves the
+glass dark: the pipeline streams video but the panel's GIP/gamma/power are
+never configured for this timing controller.
+
+Add a new descriptor whose init[] is the verbatim vendor "10inch1" sequence
+from the Luckfox Lyra SDK (rk3506-luckfox-lyra-ultra.dtsi panel-init-sequence),
+translated 1:1 - every "15 00 02 XX YY" DCS write becomes an
+ILI9881C_COMMAND_INSTR(0xXX, 0xYY); the E0 bank selects are ordinary 2-byte
+writes, so no ILI9881C_SWITCH_PAGE_INSTR is used. A new .raw_init flag tells
+prepare() to skip the trailing 0xFF,0x98,0x81 page-0 reset and the
+set-tear-on wrap, which are wrong/unsolicited for this command model; sleep-out
+(+120 ms) and display-on are still issued by prepare()/enable(). The mode is
+the SDK "10inch1" timing (70 MHz, HFP40/HS20/HBP20, VFP30/VS4/VBP10); the host
+DSI flags are kept at sync-pulse/continuous-clock, which is what the StarFive
+cdns host already locks and streams (the SDK's burst flag is host-specific).
+
+Same panel proven on RK3506 in the sibling luckfox-yocto project.
+
+Upstream-Status: Inappropriate [board/vendor-panel integration]
+
+--- a/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c
++++ b/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c
+@@ -43,6 +43,14 @@
+ 	const size_t init_length;
+ 	const struct drm_display_mode *mode;
+ 	const unsigned long mode_flags;
++	/*
++	 * raw_init: init[] is a verbatim vendor DCS byte stream that does its
++	 * own bank selection (e.g. the ILI9881C CMD2 gate via register 0xE0)
++	 * rather than the 0xFF,0x98,0x81 page switch. Skip the driver's
++	 * page-0 reset + set-tear-on wrap in prepare() so the exact vendor
++	 * sequence is what reaches the panel.
++	 */
++	bool raw_init;
+ };
+ 
+ struct ili9881c {
+@@ -1224,6 +1232,215 @@
+ 	ILI9881C_COMMAND_INSTR(MIPI_DCS_WRITE_POWER_SAVE, 0x00),
+ };
+ 
++/*
++ * Luckfox 10.1-DSI-TOUCH-A ("10inch1") ILI9881C init, verbatim from the
++ * Luckfox Lyra vendor SDK panel-init-sequence (rk3506-luckfox-lyra-ultra.dtsi).
++ * This glass drives its manufacturer command banks through register 0xE0
++ * (CMD2 BK0/1/2), NOT the 0xFF,0x98,0x81 page switch, so every write here is
++ * a plain 2-byte DCS write emitted via ILI9881C_COMMAND_INSTR (no
++ * ILI9881C_SWITCH_PAGE_INSTR). Paired with .raw_init so the driver does not
++ * wrap it. Sleep-out (0x11)+120ms and display-on (0x29) are issued by
++ * prepare()/enable().
++ */
++static const struct ili9881c_instr ws_10inch1_init[] = {
++	ILI9881C_COMMAND_INSTR(0xE0, 0x00),
++	ILI9881C_COMMAND_INSTR(0xE1, 0x93),
++	ILI9881C_COMMAND_INSTR(0xE2, 0x65),
++	ILI9881C_COMMAND_INSTR(0xE3, 0xF8),
++	ILI9881C_COMMAND_INSTR(0x80, 0x01),
++	ILI9881C_COMMAND_INSTR(0xE0, 0x01),
++	ILI9881C_COMMAND_INSTR(0x00, 0x00),
++	ILI9881C_COMMAND_INSTR(0x01, 0x38),
++	ILI9881C_COMMAND_INSTR(0x03, 0x10),
++	ILI9881C_COMMAND_INSTR(0x04, 0x38),
++	ILI9881C_COMMAND_INSTR(0x0C, 0x74),
++	ILI9881C_COMMAND_INSTR(0x17, 0x00),
++	ILI9881C_COMMAND_INSTR(0x18, 0xAF),
++	ILI9881C_COMMAND_INSTR(0x19, 0x00),
++	ILI9881C_COMMAND_INSTR(0x1A, 0x00),
++	ILI9881C_COMMAND_INSTR(0x1B, 0xAF),
++	ILI9881C_COMMAND_INSTR(0x1C, 0x00),
++	ILI9881C_COMMAND_INSTR(0x35, 0x26),
++	ILI9881C_COMMAND_INSTR(0x37, 0x09),
++	ILI9881C_COMMAND_INSTR(0x38, 0x04),
++	ILI9881C_COMMAND_INSTR(0x39, 0x00),
++	ILI9881C_COMMAND_INSTR(0x3A, 0x01),
++	ILI9881C_COMMAND_INSTR(0x3C, 0x78),
++	ILI9881C_COMMAND_INSTR(0x3D, 0xFF),
++	ILI9881C_COMMAND_INSTR(0x3E, 0xFF),
++	ILI9881C_COMMAND_INSTR(0x3F, 0x7F),
++	ILI9881C_COMMAND_INSTR(0x40, 0x06),
++	ILI9881C_COMMAND_INSTR(0x41, 0xA0),
++	ILI9881C_COMMAND_INSTR(0x42, 0x81),
++	ILI9881C_COMMAND_INSTR(0x43, 0x1E),
++	ILI9881C_COMMAND_INSTR(0x44, 0x0D),
++	ILI9881C_COMMAND_INSTR(0x45, 0x28),
++	ILI9881C_COMMAND_INSTR(0x55, 0x02),
++	ILI9881C_COMMAND_INSTR(0x57, 0x69),
++	ILI9881C_COMMAND_INSTR(0x59, 0x0A),
++	ILI9881C_COMMAND_INSTR(0x5A, 0x2A),
++	ILI9881C_COMMAND_INSTR(0x5B, 0x17),
++	ILI9881C_COMMAND_INSTR(0x5D, 0x7F),
++	ILI9881C_COMMAND_INSTR(0x5E, 0x6A),
++	ILI9881C_COMMAND_INSTR(0x5F, 0x5B),
++	ILI9881C_COMMAND_INSTR(0x60, 0x4F),
++	ILI9881C_COMMAND_INSTR(0x61, 0x4A),
++	ILI9881C_COMMAND_INSTR(0x62, 0x3D),
++	ILI9881C_COMMAND_INSTR(0x63, 0x41),
++	ILI9881C_COMMAND_INSTR(0x64, 0x2A),
++	ILI9881C_COMMAND_INSTR(0x65, 0x44),
++	ILI9881C_COMMAND_INSTR(0x66, 0x43),
++	ILI9881C_COMMAND_INSTR(0x67, 0x44),
++	ILI9881C_COMMAND_INSTR(0x68, 0x62),
++	ILI9881C_COMMAND_INSTR(0x69, 0x52),
++	ILI9881C_COMMAND_INSTR(0x6A, 0x59),
++	ILI9881C_COMMAND_INSTR(0x6B, 0x4C),
++	ILI9881C_COMMAND_INSTR(0x6C, 0x48),
++	ILI9881C_COMMAND_INSTR(0x6D, 0x3A),
++	ILI9881C_COMMAND_INSTR(0x6E, 0x26),
++	ILI9881C_COMMAND_INSTR(0x6F, 0x00),
++	ILI9881C_COMMAND_INSTR(0x70, 0x7F),
++	ILI9881C_COMMAND_INSTR(0x71, 0x6A),
++	ILI9881C_COMMAND_INSTR(0x72, 0x5B),
++	ILI9881C_COMMAND_INSTR(0x73, 0x4F),
++	ILI9881C_COMMAND_INSTR(0x74, 0x4A),
++	ILI9881C_COMMAND_INSTR(0x75, 0x3D),
++	ILI9881C_COMMAND_INSTR(0x76, 0x41),
++	ILI9881C_COMMAND_INSTR(0x77, 0x2A),
++	ILI9881C_COMMAND_INSTR(0x78, 0x44),
++	ILI9881C_COMMAND_INSTR(0x79, 0x43),
++	ILI9881C_COMMAND_INSTR(0x7A, 0x44),
++	ILI9881C_COMMAND_INSTR(0x7B, 0x62),
++	ILI9881C_COMMAND_INSTR(0x7C, 0x52),
++	ILI9881C_COMMAND_INSTR(0x7D, 0x59),
++	ILI9881C_COMMAND_INSTR(0x7E, 0x4C),
++	ILI9881C_COMMAND_INSTR(0x7F, 0x48),
++	ILI9881C_COMMAND_INSTR(0x80, 0x3A),
++	ILI9881C_COMMAND_INSTR(0x81, 0x26),
++	ILI9881C_COMMAND_INSTR(0x82, 0x00),
++	ILI9881C_COMMAND_INSTR(0xE0, 0x02),
++	ILI9881C_COMMAND_INSTR(0x00, 0x42),
++	ILI9881C_COMMAND_INSTR(0x01, 0x42),
++	ILI9881C_COMMAND_INSTR(0x02, 0x40),
++	ILI9881C_COMMAND_INSTR(0x03, 0x40),
++	ILI9881C_COMMAND_INSTR(0x04, 0x5E),
++	ILI9881C_COMMAND_INSTR(0x05, 0x5E),
++	ILI9881C_COMMAND_INSTR(0x06, 0x5F),
++	ILI9881C_COMMAND_INSTR(0x07, 0x5F),
++	ILI9881C_COMMAND_INSTR(0x08, 0x5F),
++	ILI9881C_COMMAND_INSTR(0x09, 0x57),
++	ILI9881C_COMMAND_INSTR(0x0A, 0x57),
++	ILI9881C_COMMAND_INSTR(0x0B, 0x77),
++	ILI9881C_COMMAND_INSTR(0x0C, 0x77),
++	ILI9881C_COMMAND_INSTR(0x0D, 0x47),
++	ILI9881C_COMMAND_INSTR(0x0E, 0x47),
++	ILI9881C_COMMAND_INSTR(0x0F, 0x45),
++	ILI9881C_COMMAND_INSTR(0x10, 0x45),
++	ILI9881C_COMMAND_INSTR(0x11, 0x4B),
++	ILI9881C_COMMAND_INSTR(0x12, 0x4B),
++	ILI9881C_COMMAND_INSTR(0x13, 0x49),
++	ILI9881C_COMMAND_INSTR(0x14, 0x49),
++	ILI9881C_COMMAND_INSTR(0x15, 0x5F),
++	ILI9881C_COMMAND_INSTR(0x16, 0x41),
++	ILI9881C_COMMAND_INSTR(0x17, 0x41),
++	ILI9881C_COMMAND_INSTR(0x18, 0x40),
++	ILI9881C_COMMAND_INSTR(0x19, 0x40),
++	ILI9881C_COMMAND_INSTR(0x1A, 0x5E),
++	ILI9881C_COMMAND_INSTR(0x1B, 0x5E),
++	ILI9881C_COMMAND_INSTR(0x1C, 0x5F),
++	ILI9881C_COMMAND_INSTR(0x1D, 0x5F),
++	ILI9881C_COMMAND_INSTR(0x1E, 0x5F),
++	ILI9881C_COMMAND_INSTR(0x1F, 0x57),
++	ILI9881C_COMMAND_INSTR(0x20, 0x57),
++	ILI9881C_COMMAND_INSTR(0x21, 0x77),
++	ILI9881C_COMMAND_INSTR(0x22, 0x77),
++	ILI9881C_COMMAND_INSTR(0x23, 0x46),
++	ILI9881C_COMMAND_INSTR(0x24, 0x46),
++	ILI9881C_COMMAND_INSTR(0x25, 0x44),
++	ILI9881C_COMMAND_INSTR(0x26, 0x44),
++	ILI9881C_COMMAND_INSTR(0x27, 0x4A),
++	ILI9881C_COMMAND_INSTR(0x28, 0x4A),
++	ILI9881C_COMMAND_INSTR(0x29, 0x48),
++	ILI9881C_COMMAND_INSTR(0x2A, 0x48),
++	ILI9881C_COMMAND_INSTR(0x2B, 0x5F),
++	ILI9881C_COMMAND_INSTR(0x2C, 0x01),
++	ILI9881C_COMMAND_INSTR(0x2D, 0x01),
++	ILI9881C_COMMAND_INSTR(0x2E, 0x00),
++	ILI9881C_COMMAND_INSTR(0x2F, 0x00),
++	ILI9881C_COMMAND_INSTR(0x30, 0x1F),
++	ILI9881C_COMMAND_INSTR(0x31, 0x1F),
++	ILI9881C_COMMAND_INSTR(0x32, 0x1E),
++	ILI9881C_COMMAND_INSTR(0x33, 0x1E),
++	ILI9881C_COMMAND_INSTR(0x34, 0x1F),
++	ILI9881C_COMMAND_INSTR(0x35, 0x17),
++	ILI9881C_COMMAND_INSTR(0x36, 0x17),
++	ILI9881C_COMMAND_INSTR(0x37, 0x37),
++	ILI9881C_COMMAND_INSTR(0x38, 0x37),
++	ILI9881C_COMMAND_INSTR(0x39, 0x08),
++	ILI9881C_COMMAND_INSTR(0x3A, 0x08),
++	ILI9881C_COMMAND_INSTR(0x3B, 0x0A),
++	ILI9881C_COMMAND_INSTR(0x3C, 0x0A),
++	ILI9881C_COMMAND_INSTR(0x3D, 0x04),
++	ILI9881C_COMMAND_INSTR(0x3E, 0x04),
++	ILI9881C_COMMAND_INSTR(0x3F, 0x06),
++	ILI9881C_COMMAND_INSTR(0x40, 0x06),
++	ILI9881C_COMMAND_INSTR(0x41, 0x1F),
++	ILI9881C_COMMAND_INSTR(0x42, 0x02),
++	ILI9881C_COMMAND_INSTR(0x43, 0x02),
++	ILI9881C_COMMAND_INSTR(0x44, 0x00),
++	ILI9881C_COMMAND_INSTR(0x45, 0x00),
++	ILI9881C_COMMAND_INSTR(0x46, 0x1F),
++	ILI9881C_COMMAND_INSTR(0x47, 0x1F),
++	ILI9881C_COMMAND_INSTR(0x48, 0x1E),
++	ILI9881C_COMMAND_INSTR(0x49, 0x1E),
++	ILI9881C_COMMAND_INSTR(0x4A, 0x1F),
++	ILI9881C_COMMAND_INSTR(0x4B, 0x17),
++	ILI9881C_COMMAND_INSTR(0x4C, 0x17),
++	ILI9881C_COMMAND_INSTR(0x4D, 0x37),
++	ILI9881C_COMMAND_INSTR(0x4E, 0x37),
++	ILI9881C_COMMAND_INSTR(0x4F, 0x09),
++	ILI9881C_COMMAND_INSTR(0x50, 0x09),
++	ILI9881C_COMMAND_INSTR(0x51, 0x0B),
++	ILI9881C_COMMAND_INSTR(0x52, 0x0B),
++	ILI9881C_COMMAND_INSTR(0x53, 0x05),
++	ILI9881C_COMMAND_INSTR(0x54, 0x05),
++	ILI9881C_COMMAND_INSTR(0x55, 0x07),
++	ILI9881C_COMMAND_INSTR(0x56, 0x07),
++	ILI9881C_COMMAND_INSTR(0x57, 0x1F),
++	ILI9881C_COMMAND_INSTR(0x58, 0x40),
++	ILI9881C_COMMAND_INSTR(0x5B, 0x30),
++	ILI9881C_COMMAND_INSTR(0x5C, 0x00),
++	ILI9881C_COMMAND_INSTR(0x5D, 0x34),
++	ILI9881C_COMMAND_INSTR(0x5E, 0x05),
++	ILI9881C_COMMAND_INSTR(0x5F, 0x02),
++	ILI9881C_COMMAND_INSTR(0x63, 0x00),
++	ILI9881C_COMMAND_INSTR(0x64, 0x6A),
++	ILI9881C_COMMAND_INSTR(0x67, 0x73),
++	ILI9881C_COMMAND_INSTR(0x68, 0x07),
++	ILI9881C_COMMAND_INSTR(0x69, 0x08),
++	ILI9881C_COMMAND_INSTR(0x6A, 0x6A),
++	ILI9881C_COMMAND_INSTR(0x6B, 0x08),
++	ILI9881C_COMMAND_INSTR(0x6C, 0x00),
++	ILI9881C_COMMAND_INSTR(0x6D, 0x00),
++	ILI9881C_COMMAND_INSTR(0x6E, 0x00),
++	ILI9881C_COMMAND_INSTR(0x6F, 0x88),
++	ILI9881C_COMMAND_INSTR(0x75, 0xFF),
++	ILI9881C_COMMAND_INSTR(0x77, 0xDD),
++	ILI9881C_COMMAND_INSTR(0x78, 0x2C),
++	ILI9881C_COMMAND_INSTR(0x79, 0x15),
++	ILI9881C_COMMAND_INSTR(0x7A, 0x17),
++	ILI9881C_COMMAND_INSTR(0x7D, 0x14),
++	ILI9881C_COMMAND_INSTR(0x7E, 0x82),
++	ILI9881C_COMMAND_INSTR(0xE0, 0x04),
++	ILI9881C_COMMAND_INSTR(0x00, 0x0E),
++	ILI9881C_COMMAND_INSTR(0x02, 0xB3),
++	ILI9881C_COMMAND_INSTR(0x09, 0x61),
++	ILI9881C_COMMAND_INSTR(0x0E, 0x48),
++	ILI9881C_COMMAND_INSTR(0xE0, 0x00),
++	ILI9881C_COMMAND_INSTR(0xE6, 0x02),
++	ILI9881C_COMMAND_INSTR(0xE7, 0x0C),
++};
++
+ static inline struct ili9881c *panel_to_ili9881c(struct drm_panel *panel)
+ {
+ 	return container_of(panel, struct ili9881c, panel);
+@@ -1296,13 +1513,21 @@
+ 			return ret;
+ 	}
+ 
+-	ret = ili9881c_switch_page(ctx, 0);
+-	if (ret)
+-		return ret;
++	/*
++	 * A raw vendor sequence has already returned itself to the user
++	 * command set and must not receive the 0xFF,0x98,0x81 page switch
++	 * (an unknown command on a CMD2/0xE0-bank panel) or an unsolicited
++	 * set-tear-on. Only wrap the ILI9881C-native page-based inits.
++	 */
++	if (!ctx->desc->raw_init) {
++		ret = ili9881c_switch_page(ctx, 0);
++		if (ret)
++			return ret;
+ 
+-	ret = mipi_dsi_dcs_set_tear_on(ctx->dsi, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
+-	if (ret)
+-		return ret;
++		ret = mipi_dsi_dcs_set_tear_on(ctx->dsi, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
++		if (ret)
++			return ret;
++	}
+ 
+ 	ret = mipi_dsi_dcs_exit_sleep_mode(ctx->dsi);
+ 	if (ret)
+@@ -1442,6 +1667,26 @@
+ 	.height_mm	= 151,
+ };
+ 
++/* "10inch1" timing (Luckfox SDK ws_10inch_1 / dsi_timing0): 70 MHz pixel
++ * clock, 800x1280 @ ~60 fps, porches HFP40/HS20/HBP20, VFP30/VS4/VBP10.
++ * htotal 880 x vtotal 1324 x 60 ~= 69.9 MHz. */
++static const struct drm_display_mode ws_10inch1_default_mode = {
++	.clock		= 70000,
++
++	.hdisplay	= 800,
++	.hsync_start	= 800 + 40,
++	.hsync_end	= 800 + 40 + 20,
++	.htotal		= 800 + 40 + 20 + 20,
++
++	.vdisplay	= 1280,
++	.vsync_start	= 1280 + 30,
++	.vsync_end	= 1280 + 30 + 4,
++	.vtotal		= 1280 + 30 + 4 + 10,
++
++	.width_mm	= 135,
++	.height_mm	= 216,
++};
++
+ static int ili9881c_get_modes(struct drm_panel *panel,
+ 			      struct drm_connector *connector)
+ {
+@@ -1603,6 +1848,21 @@
+ 		      MIPI_DSI_MODE_LPM,
+ };
+ 
++static const struct ili9881c_desc ws_10inch1_desc = {
++	.init = ws_10inch1_init,
++	.init_length = ARRAY_SIZE(ws_10inch1_init),
++	.mode = &ws_10inch1_default_mode,
++	.raw_init = true,
++	/*
++	 * Use the flags StarFive validated this cdns host with (see the vendor
++	 * panel-starfive-jadard.c): sync-pulse + LPM, EOT generation on. Event
++	 * mode trips a host htotal-inflation bug (check_conf adds HSA overhead
++	 * unconditionally -> DPI FIFO overflow), so sync-pulse is required here.
++	 */
++	.mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
++		      MIPI_DSI_MODE_LPM,
++};
++
+ static const struct of_device_id ili9881c_of_match[] = {
+ 	{ .compatible = "bananapi,lhr050h41", .data = &lhr050h41_desc },
+ 	{ .compatible = "feixin,k101-im2byl02", .data = &k101_im2byl02_desc },
+@@ -1610,6 +1870,7 @@
+ 	{ .compatible = "tdo,tl050hdv35", .data = &tl050hdv35_desc },
+ 	{ .compatible = "wanchanglong,w552946aba", .data = &w552946aba_desc },
+ 	{ .compatible = "ampire,am8001280g", .data = &am8001280g_desc },
++	{ .compatible = "waveshare,10inch1", .data = &ws_10inch1_desc },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(of, ili9881c_of_match);

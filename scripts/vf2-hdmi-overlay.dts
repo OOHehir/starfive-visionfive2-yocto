@@ -1,0 +1,146 @@
+/dts-v1/;
+/plugin/;
+
+/* VF2 HDMI display nodes injected into mainline u-boot 2026.01's control FDT at
+ * runtime via `fdt apply` (u-boot control FDT carries __symbols__). Nodes +
+ * clock/reset specifiers transplanted from the linux-starfive-dev 6.12.5 board
+ * DTB (scratch_dt/kernel-vf2.dts); numeric phandles remapped to labels:
+ *   0x03->&syscrg  0x54->&voutcrg  0x55->&hdmitx_pixclk  0x53->&dssctrl
+ *   0x1a->&sysgpio  0x5a->&aldo5_reg  0x5b->&aldo3_reg  0x59->&hdmi_pins
+ * HDMI-only: DSI encoder + dc8200 dsi endpoint dropped (would pull in mipi@295d0000).
+ */
+
+/ {
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			hdmitx_pixclk: hdmitx0-pixel-clock {
+				compatible = "fixed-clock";
+				clock-output-names = "hdmitx0_pixelclk";
+				#clock-cells = <0>;
+				clock-frequency = <0x11b3dc40>;
+			};
+
+			display_subsystem: display-subsystem {
+				compatible = "starfive,jh7110-display", "verisilicon,display-subsystem";
+				status = "okay";
+				ports = <&dc_ep0>;
+			};
+
+			rgb_output: rgb-output {
+				compatible = "starfive,jh7110-rgb_output", "verisilicon,rgb-encoder";
+				status = "disabled";
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 {
+						#address-cells = <1>;
+						#size-cells = <0>;
+						reg = <0>;
+						rgb_ep0: endpoint@0 {
+							reg = <0>;
+							remote-endpoint = <&dc_ep0>;
+						};
+					};
+				};
+			};
+		};
+	};
+
+	fragment@1 {
+		target-path = "/soc";
+		__overlay__ {
+			dssctrl: dssctrl@295b0000 {
+				compatible = "starfive,jh7110-dssctrl", "verisilicon,dss-ctrl", "syscon";
+				reg = <0x00 0x295b0000 0x00 0x90>;
+			};
+
+			dc8200: dc8200@29400000 {
+				compatible = "starfive,jh7110-dc8200", "verisilicon,dc8200";
+				verisilicon,dss-syscon = <&dssctrl>;
+				reg = <0x00 0x29400000 0x00 0x100
+				       0x00 0x29400800 0x00 0x2000
+				       0x00 0x17030000 0x00 0x1000>;
+				interrupts = <0x5f>;
+				clocks = <&syscrg 0x3c &syscrg 0x3a &syscrg 0x3e &syscrg 0x3d
+					  &voutcrg 0x07 &voutcrg 0x08 &voutcrg 0x04 &voutcrg 0x05 &voutcrg 0x06
+					  &syscrg 0x3e &voutcrg 0x09 &hdmitx_pixclk &voutcrg 0x01>;
+				clock-names = "noc_disp", "vout_src", "top_vout_axi", "top_vout_ahb",
+					      "pix_clk", "vout_pix1", "axi_clk", "core_clk", "vout_ahb",
+					      "vout_top_axi", "vout_top_lcd", "hdmitx0_pixelclk", "dc8200_pix0";
+				resets = <&syscrg 0x2b &voutcrg 0x00 &voutcrg 0x01 &voutcrg 0x02 &syscrg 0x1a>;
+				reset-names = "rst_vout_src", "rst_axi", "rst_ahb", "rst_core", "rst_noc_disp";
+				status = "okay";
+				port {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					dc_ep0: endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&rgb_ep0>;
+					};
+					dc_ep1: endpoint@1 {
+						reg = <1>;
+						remote-endpoint = <&hdmi_ep0>;
+					};
+				};
+			};
+
+			hdmi: hdmi@29590000 {
+				compatible = "starfive,jh7110-hdmi", "inno,hdmi";
+				reg = <0x00 0x29590000 0x00 0x4000>;
+				interrupts = <0x63>;
+				clocks = <&voutcrg 0x11 &voutcrg 0x0f &voutcrg 0x10 &hdmitx_pixclk>;
+				clock-names = "sysclk", "mclk", "bclk", "pclk";
+				resets = <&voutcrg 0x09>;
+				reset-names = "hdmi_tx";
+				#sound-dai-cells = <0>;
+				status = "okay";
+				pinctrl-names = "default";
+				pinctrl-0 = <&hdmi_pins>;
+				hpd-gpio = <&sysgpio 0x0f 0x00>;
+				hdmi_0p9-supply = <&aldo5_reg>;
+				hdmi_1p8-supply = <&aldo3_reg>;
+				port {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					hdmi_ep0: endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&dc_ep1>;
+					};
+				};
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&sysgpio>;
+		__overlay__ {
+			hdmi_pins: hdmi-0 {
+				scl-pins  { pinmux = <0x60b0c00>; bias-pull-up; input-enable; };
+				sda-pins  { pinmux = <0x70c1001>; bias-pull-up; input-enable; };
+				cec-pins  { pinmux = <0x50a080e>; bias-pull-up; input-enable; };
+				hpd-pins  { pinmux = <0x800040f>; bias-disable; input-enable; };
+			};
+		};
+	};
+
+	fragment@3 {
+		target-path = "/soc/i2c@12050000/pmic@36/regulators";
+		__overlay__ {
+			aldo5_reg: ALDO5 {
+				regulator-boot-on;
+				regulator-compatible = "aldo5";
+				regulator-name = "hdmi_0p9";
+				regulator-min-microvolt = <0xdbba0>;
+				regulator-max-microvolt = <0xdbba0>;
+			};
+			aldo3_reg: ALDO3 {
+				regulator-boot-on;
+				regulator-compatible = "aldo3";
+				regulator-name = "hdmi_1p8";
+				regulator-min-microvolt = <0x1b7740>;
+				regulator-max-microvolt = <0x1b7740>;
+			};
+		};
+	};
+};

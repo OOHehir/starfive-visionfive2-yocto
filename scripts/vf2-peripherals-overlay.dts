@@ -1,0 +1,40 @@
+/dts-v1/;
+/plugin/;
+
+/* VF2 extra onboard peripherals injected into mainline u-boot 2026.01's control
+ * FDT at runtime via `fdt apply` (control FDT carries __symbols__). Nodes +
+ * clock/reset/power specifiers transplanted from linux-starfive-dev 6.12.5
+ * (scratch_dt/kernel-vf2.dts); numeric phandles remapped to labels:
+ *   0x41->&aoncrg  0x03->&syscrg  0x3b->&pwrc
+ * All providers already exist in u-boot's control FDT.
+ * Kept separate from the HDMI overlay so display vs peripherals stay decoupled.
+ */
+
+/ {
+	fragment@0 {
+		target-path = "/soc";
+		__overlay__ {
+			/* Real-time clock (jh7110 RTC; needs aoncrg pclk/cal_clk) */
+			rtc@17040000 {
+				compatible = "starfive,jh7110-rtc";
+				reg = <0x00 0x17040000 0x00 0x10000>;
+				interrupts = <0x0a 0x0b 0x0c>;
+				interrupt-names = "rtc_ms_pulse", "rtc_sec_pulse", "rtc";
+				clocks = <&aoncrg 0x0a &aoncrg 0x0d>;
+				clock-names = "pclk", "cal_clk";
+				resets = <&aoncrg 0x07 &aoncrg 0x05 &aoncrg 0x06>;
+				reset-names = "rst_osc", "rst_apb", "rst_cal";
+				rtc,cal-clock-freq = <0xf4240>;
+				status = "okay";
+			};
+
+			/* NOTE: vpu_dec@130a0000 (starfive,vdec / wave5) is intentionally NOT
+			 * here. Its clocks/resets/power-domain (&syscrg/&pwrc) all resolve, but
+			 * u-boot's control FDT has NO /reserved-memory, so the wave5 driver's
+			 * DMA-coherent allocation fails and it oopses at probe. The kernel DTB
+			 * carries a linux,cma-default pool the driver allocates from. To enable:
+			 * add a /reserved-memory linux,cma node (or boot with cma=<size>). TODO
+			 * (see docs/PRODUCTIONIZE.md). */
+		};
+	};
+};

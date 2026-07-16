@@ -1,0 +1,6 @@
+#!/bin/sh
+# Launch Doom (doomgeneric) on the DSI panel with the freedoom IWAD.
+# The framebuffer backend renders rotated/landscape to /dev/fb0.
+# Pass extra doomgeneric args through (e.g. -warp, -skill).
+WAD=/usr/share/games/doom/freedoom1.wad
+exec /usr/bin/doomgeneric -iwad "$WAD" "$@"
