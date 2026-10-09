@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copy the kernel Image, DTB & nogpu-wifi initramfs to the bench TFTP dir.
+# Copy the kernel Image, DTB & bench-wifi initramfs to the bench TFTP dir.
 # Safe to re-run; needs the CIFS/autofs mount writable.
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,8 +15,8 @@ fi
 set -x
 cp -L "$IMG/Image"                                        "$TFTP/Image"
 cp -L "$IMG/$DTB"                                         "$TFTP/$DTB"
-cp    "$IMG/core-image-weston-visionfive2-nogpu-wifi.cpio.gz" "$TFTP/nogpu-wifi.cpio.gz"
+cp    "$IMG/core-image-weston-visionfive2-bench-wifi.cpio.gz" "$TFTP/bench-wifi.cpio.gz"
 sync
 set +x
 echo "[*] staged to $TFTP:"
-ls -la --time-style=+%H:%M "$TFTP/Image" "$TFTP/$DTB" "$TFTP/nogpu-wifi.cpio.gz"
+ls -la --time-style=+%H:%M "$TFTP/Image" "$TFTP/$DTB" "$TFTP/bench-wifi.cpio.gz"

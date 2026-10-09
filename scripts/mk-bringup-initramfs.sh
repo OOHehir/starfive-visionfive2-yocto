@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the bench initramfs (…-nogpu-wifi.cpio.gz) from core-image-weston plus the
+# Build the bench initramfs (…-bench-wifi.cpio.gz) from core-image-weston plus the
 # workarounds still to move into recipes (docs/PRODUCTIONIZE.md). VF2_GPU=0: no GPU.
 # Needs scratch_fw/ECR6600U_transport.bin & wifi_ecr6600u.cfg.
 set -e
@@ -103,19 +103,19 @@ if [ "${VF2_DIAG:-1}" = 1 ] && [ -e etc/rc5.d/S99doom ]; then
     echo "[*] VF2_DIAG=1: removed Doom autostart (S99doom) for the probe run"
 fi
 
-OUT="$IMG/core-image-weston-visionfive2-nogpu-wifi.cpio.gz"
+OUT="$IMG/core-image-weston-visionfive2-bench-wifi.cpio.gz"
 find . | cpio -o -H newc --owner=root:root --quiet | gzip -1 > "$OUT"
 echo "[*] built: $(ls -la "$OUT")"
 # Best-effort: the CIFS/autofs mount is sometimes down.
-if [ -w "$TFTP" ] && cp "$OUT" "$TFTP/nogpu-wifi.cpio.gz" 2>/dev/null; then
-    echo "[*] staged: $(ls -la "$TFTP/nogpu-wifi.cpio.gz")"
+if [ -w "$TFTP" ] && cp "$OUT" "$TFTP/bench-wifi.cpio.gz" 2>/dev/null; then
+    echo "[*] staged: $(ls -la "$TFTP/bench-wifi.cpio.gz")"
 else
     echo "[!] TFTP ($TFTP) not writable — skipped staging. Copy manually:"
-    echo "    cp $OUT $TFTP/nogpu-wifi.cpio.gz"
+    echo "    cp $OUT $TFTP/bench-wifi.cpio.gz"
 fi
 echo "[*] sanity:"
 echo "    iw:        $([ -e "$WORK/usr/sbin/iw" ] && echo yes)"
 echo "    alsa:      $([ -e "$WORK/usr/bin/aplay" ] && echo yes)"
 echo "    bluez:     $([ -e "$WORK/usr/bin/bluetoothctl" ] && echo yes)"
 echo "    wifi fw:   $([ -e "$WORK/lib/firmware/ECR6600U_transport.bin" ] && echo yes)"
-echo "    pvr start: $(ls "$WORK"/etc/rc?.d/*rc.pvr 2>/dev/null | grep -c S20) (want 0)"
+echo "    pvr start: $(ls "$WORK"/etc/rc?.d/*rc.pvr 2>/dev/null | grep -c S20) (want $([ "${VF2_GPU:-1}" = 0 ] && echo 0 || echo '>0'))"
