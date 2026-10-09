@@ -61,7 +61,7 @@ def main():
 
     ok = True
     out = send(ser, "sf probe", tmo=15)
-    ok &= expect_ok(out, "sf probe", ["SF: Detected", "sf probe"])
+    ok &= expect_ok(out, "sf probe", ["SF: Detected"])
 
     send(ser, "setenv autoload no", tmo=10)
     send(ser, "dhcp", tmo=40)
