@@ -10,7 +10,6 @@ Usage: vf2-netboot.py [--reset] [--dtb F | --overlay F,...] [--blacklist MOD]
 """
 import argparse
 import sys
-import threading
 import time
 
 import serial
