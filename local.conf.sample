@@ -1,0 +1,99 @@
+# Tuned for the build host observed here: Ryzen 9 5900HX (16 threads), 15 GB RAM.
+# Yocto master (blacksail); the wrynose LTS build is on the `wrynose` branch.
+
+# ---------------------------------------------------------------------------
+# Target
+# ---------------------------------------------------------------------------
+MACHINE ?= "visionfive2"
+DISTRO ?= "poky"
+PACKAGE_CLASSES ?= "package_ipk"
+
+# ---------------------------------------------------------------------------
+# Build parallelism — RAM-bound (~1.5-2 GB per heavy job); the pressure limits
+# stop new tasks starting while the host thrashes, rather than OOM-killing links.
+# ---------------------------------------------------------------------------
+BB_NUMBER_THREADS ?= "6"
+PARALLEL_MAKE ?= "-j 8"
+# Linux PSI-based throttling (only gates *starting* tasks; running ones finish).
+BB_PRESSURE_MAX_CPU ?= "15000"
+BB_PRESSURE_MAX_IO ?= "15000"
+BB_PRESSURE_MAX_MEMORY ?= "5000"
+# The known RAM hogs: link-heavy natives get fewer jobs.
+PARALLEL_MAKE:pn-rust-native = "-j 4"
+PARALLEL_MAKE:pn-rust-llvm-native = "-j 4"
+PARALLEL_MAKE:pn-llvm-native = "-j 4"
+PARALLEL_MAKE:pn-gcc-cross-riscv64 = "-j 6"
+# webkitgtk needs ~1.5-2 GB per C++ unit; at -j8 it drove this host 11 GB into swap.
+PARALLEL_MAKE:pn-webkitgtk = "-j 4"
+
+# ---------------------------------------------------------------------------
+# Shared download + sstate cache (reused across all boards on this host)
+# ---------------------------------------------------------------------------
+DL_DIR ?= "/home/repo/yocto-artifacts/downloads"
+SSTATE_DIR ?= "/home/repo/yocto-artifacts/sstate-cache"
+
+# ---------------------------------------------------------------------------
+# Hash equivalence. The DB is per Yocto series: newer bitbake's schema must not
+# reach the older projects that share yocto-artifacts on this host.
+# ---------------------------------------------------------------------------
+BB_SIGNATURE_HANDLER ?= "OEEquivHash"
+BB_HASHSERVE ?= "auto"
+BB_HASHSERVE_DB_DIR ?= "/home/repo/yocto-artifacts/hashserv/master"
+# The autobuilder builds oe-core master continuously, so most of the native
+# toolchain comes prebuilt from here. Cache only; SRCREVs stay pinned.
+BB_HASHSERVE_UPSTREAM ?= "wss://hashserv.yoctoproject.org/ws"
+SSTATE_MIRRORS ?= "file://.* http://sstate.yoctoproject.org/all/PATH;downloadfilename=PATH"
+
+# ---------------------------------------------------------------------------
+# Image formats: tar.gz for the NFS-root export & cpio.gz for initramfs netboot
+# (scripts/netboot.sh), on top of riscv-common.inc's wic.gz/wic.bmap/ext4.
+# ---------------------------------------------------------------------------
+IMAGE_FSTYPES:append = " tar.gz cpio.gz"
+
+# ---------------------------------------------------------------------------
+# Dev conveniences — REMOVE for a release build: passwordless root login.
+# "debug-tweaks" no longer exists (removed in wrynose), hence the granular set.
+# ---------------------------------------------------------------------------
+EXTRA_IMAGE_FEATURES ?= "allow-empty-password empty-root-password allow-root-login serial-autologin-root post-install-logging ssh-server-openssh"
+
+# GPU, touch & V4L2 test tools, so hardware checks need no rebuild.
+CORE_IMAGE_EXTRA_INSTALL += "glmark2 kmscube mesa-demos evtest libinput v4l-utils"
+# WiFi userspace (ECR6600U cfg80211): scan/associate + DHCP on wlan0.
+CORE_IMAGE_EXTRA_INSTALL += "iw wpa-supplicant"
+
+# ---------------------------------------------------------------------------
+# Dev-loop ergonomics
+# ---------------------------------------------------------------------------
+# Keep work dirs only for the recipes iterated on most, for devshell/patch cycles.
+INHERIT += "rm_work"
+RM_WORK_EXCLUDE += "linux-starfive-dev u-boot-starfive mesa-pvr visionfive2-pvr-graphics"
+
+BB_DISKMON_DIRS ??= "\
+    STOPTASKS,${TMPDIR},2G,100K \
+    STOPTASKS,${DL_DIR},2G,100K \
+    STOPTASKS,${SSTATE_DIR},2G,100K \
+    HALT,${TMPDIR},500M,1K \
+    HALT,${DL_DIR},500M,1K \
+    HALT,${SSTATE_DIR},500M,1K \
+"
+
+# ---------------------------------------------------------------------------
+# Licensing — the PowerVR GPU stack (DDK, rgx.fw, pvrsrvkm) is a closed,
+# redistributable blob. meta-riscv marks it LICENSE_FLAGS "commercial".
+# ---------------------------------------------------------------------------
+LICENSE_FLAGS_ACCEPTED ?= "commercial"
+
+# SPDX/SBOM, so the closed blobs in the image are on record.
+INHERIT += "create-spdx"
+
+# ---------------------------------------------------------------------------
+# meta-riscv's soft_3rdpart (GPU/VPU blobs) mirror no longer serves it; StarFive's
+# GitHub has the identical pinned SRCREV b60da16. Needs git-lfs on the build host.
+# ---------------------------------------------------------------------------
+PREMIRRORS:append = " \
+    git://strlcat.eu/mirroring/jh7110_soft_3rdpart.git git://github.com/starfive-tech/soft_3rdpart.git;protocol=https \n \
+"
+
+CONF_VERSION = "2"
+# Audio playback tools (PWMDAC/HDMI test) + Bluetooth stack (bluez).
+CORE_IMAGE_EXTRA_INSTALL += "alsa-utils bluez5"

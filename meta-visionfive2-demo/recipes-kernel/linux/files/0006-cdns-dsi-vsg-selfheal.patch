@@ -1,0 +1,97 @@
+starfive/cdns-dsi: self-heal the first-enable VSG stall (deterministic cold boot)
+
+On a cold boot the panel came up black roughly every time: the DSI video stream
+generator (VSG) is armed in cdns_dsi_bridge_enable() before dc8200's DPI stream
+is stable, so it misses the initial vsync and never starts (VID_MODE_STS
+VSG_RUNNING stays 0, VID_VPOS frozen). Any later DSI bridge disable/enable (the
+vendor DPMS off/on) recovers it because dc8200 keeps running and the re-arm
+catches a live vsync; a plain re-modeset does not.
+
+Make the driver do that recovery itself: after arming the video path, poll
+VSG_RUNNING for ~150 ms; if it has not started, disarm the video path and
+force a runtime-PM suspend/resume of the DSI host (runtime_suspend stops the PPI
+clock and does phy_power_off()+phy_exit(); the retry re-runs init_link() to
+re-init the phy), then re-arm on the now-live DPI. This is exactly the vendor
+DPMS off/on that is known to recover it. A video-only re-arm was tried first and
+proved insufficient (the phy must be re-cycled). Warm modesets lock on the first
+poll and never retry.
+
+Measured on hardware (no-touch /dev/mem probe, 2026-07-16): the re-armed VSG
+does NOT start within bridge_enable itself, however long it is polled (a 20 s
+in-line poll came back 0 and only delayed the boot — it blocks the DRM commit
+queue). It latches on the NEXT modeset from the first fb client (psplash/
+fbcon/weston fb_set_par), which in any real boot follows within ~2 s; the phy
+power-cycle here is what makes that following modeset succeed (without it the
+panel stays black indefinitely). So: re-arm, poll only briefly, return, and let
+the queued fb-client modeset complete the recovery.
+
+Upstream-Status: Inappropriate [vendor-driver integration]
+
+--- a/drivers/gpu/drm/verisilicon/starfive_drm_dsi.c
++++ b/drivers/gpu/drm/verisilicon/starfive_drm_dsi.c
+@@ -1107,10 +1107,13 @@
+ 	int nlanes;
+ 	int vrefresh;
+ 	u32 div;
++	int i, attempt = 0;
+ 
+ 	mode = &bridge->encoder->crtc->state->adjusted_mode;
+ 	nlanes = output->dev->lanes;
+ 
++retry:
++
+ 	//WARN_ON_ONCE(cdns_dsi_check_conf(dsi, mode, &dsi_cfg, false));//original //7110 mode illegal,need confirm //cannot disable
+ 	cdns_dsi_check_conf(dsi, mode, &dsi_cfg, false);
+ 	//cdns_dsi_hs_init(dsi);
+@@ -1234,6 +1237,51 @@
+ 	tmp = readl(dsi->regs + MCTL_MAIN_EN) | IF_EN(input->id);
+ 	writel(tmp, dsi->regs + MCTL_MAIN_EN);
+ 
++	/*
++	 * First-enable VSG race (known cdns-dsi defect, fixed upstream by moving
++	 * VID_EN into atomic_pre_enable + a 6.17 CRTC/bridge reorder). On this
++	 * pre-refactor vendor driver the video generator is armed here, after
++	 * dc8200's DPI is already streaming, so it misses the first vsync and
++	 * never starts (VSG_RUNNING stays 0, panel black). The vendor's own DPMS
++	 * off/on recovers it. Reproduce that: if the VSG has not started, force a
++	 * runtime-PM suspend/resume of the DSI host (runtime_suspend stops the PPI
++	 * clock + phy_power_off/exit; the goto re-runs init_link to re-init the
++	 * phy) and re-arm. The re-armed VSG does not start within this call
++	 * (measured: a 20 s in-line poll stays 0 and only stalls the commit
++	 * queue) — it latches on the next fb-client modeset (psplash/fbcon/
++	 * weston), which the phy re-cycle makes succeed. Poll briefly, return.
++	 */
++	for (i = 0; i < (attempt ? 100 : 30); i++) {
++		if (readl(dsi->regs + VID_MODE_STS) & VSG_RUNNING)
++			break;
++		msleep(5);
++	}
++	if (!(readl(dsi->regs + VID_MODE_STS) & VSG_RUNNING) && attempt++ == 0) {
++		u32 v;
++
++		v = readl(dsi->regs + MCTL_MAIN_DATA_CTL);
++		v &= ~(IF_VID_SELECT_MASK | IF_VID_MODE | VID_EN);
++		writel(v, dsi->regs + MCTL_MAIN_DATA_CTL);
++		v = readl(dsi->regs + MCTL_MAIN_EN) & ~IF_EN(input->id);
++		writel(v, dsi->regs + MCTL_MAIN_EN);
++
++		dev_info(dsi->base.dev, "VSG stalled on first arm; power-cycling DSI host\n");
++		pm_runtime_put_sync_suspend(dsi->base.dev);
++		mdelay(20);
++		if (WARN_ON(pm_runtime_get_sync(dsi->base.dev) < 0))
++			return;
++		goto retry;
++	}
++	if (readl(dsi->regs + VID_MODE_STS) & VSG_RUNNING) {
++		if (attempt)
++			dev_info(dsi->base.dev, "VSG started after re-arm\n");
++	} else if (attempt) {
++		dev_info(dsi->base.dev,
++			 "VSG re-armed; next fb-client modeset completes recovery\n");
++	} else {
++		dev_warn(dsi->base.dev, "VSG not running after enable\n");
++	}
++
+ #ifdef CONFIG_STARFIVE_MIPI_TOOL_TEST
+ 	tmp = readl(dsi->regs + VID_MODE_STS);
+ 	printk("%s,VID_MODE_STS %08x************************\n", __func__, tmp);

@@ -1,0 +1,11 @@
+ESWIN ECR6600U USB WiFi firmware (ECR6600U_transport.bin, wifi_ecr6600u.cfg)
+
+Proprietary binary firmware, (c) ESWIN Computing. No license text is
+published with it.
+
+Provenance: redistributed by StarFive in starfive-tech/buildroot
+(branch JH7110_VisionFive2_devel,
+package/starfive/starfive-firmware/ECR6600U-usb-wifi) for use with the
+ecrnx driver in the StarFive VisionFive 2 6.12 vendor kernel.
+
+This file records provenance only; it does not grant any rights.

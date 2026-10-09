@@ -1,0 +1,36 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          doom
+# Required-Start:    $local_fs $remote_fs
+# Required-Stop:     $local_fs $remote_fs
+# Default-Start:     5
+# Default-Stop:      0 1 6
+# Short-Description: Doom (doomgeneric) fullscreen on the DSI framebuffer panel
+### END INIT INFO
+# Self-gating: /dev/fb0 exists only with a connected panel. Doom draws straight
+# to fb0, which Weston otherwise owns, so Weston is stopped first.
+
+NAME=doom
+BIN=/usr/bin/doom
+
+case "$1" in
+  start)
+    [ -e /dev/fb0 ] || { echo "doom: no /dev/fb0 (no panel) - skipping"; exit 0; }
+    [ -x /etc/init.d/weston ] && /etc/init.d/weston stop >/dev/null 2>&1
+    echo "Starting $NAME on /dev/fb0"
+    # The fb backend scans /dev/input once at launch: give USB HID 5 s to enumerate.
+    ( sleep 5; exec "$BIN" ) >/dev/null 2>&1 &
+    ;;
+  stop)
+    echo "Stopping $NAME"
+    killall doomgeneric 2>/dev/null
+    ;;
+  restart)
+    "$0" stop; "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac
+exit 0

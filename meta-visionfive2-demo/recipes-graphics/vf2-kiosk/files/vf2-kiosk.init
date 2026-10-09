@@ -1,0 +1,66 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          vf2-kiosk
+# Required-Start:    $local_fs weston
+# Required-Stop:     $local_fs
+# Default-Start:     5
+# Default-Stop:      0 1 6
+# Short-Description: Fullscreen status-page kiosk on the DSI panel
+### END INIT INFO
+# Runs as the user that owns Weston's socket, which the kiosk must share.
+
+NAME=vf2-kiosk
+BIN=/usr/bin/vf2-kiosk
+
+find_socket() {
+    for d in /run/user/*; do
+        for s in "$d"/wayland-*; do
+            case "$s" in *.lock) continue;; esac
+            [ -S "$s" ] && { echo "$s"; return 0; }
+        done
+    done
+    return 1
+}
+
+case "$1" in
+  start)
+    (
+      # Weston starts just before us; wait for its socket.
+      n=0
+      while [ $n -lt 60 ]; do
+          SOCK=$(find_socket) && break
+          sleep 0.5; n=$((n+1))
+      done
+      [ -n "$SOCK" ] || { echo "$NAME: no wayland socket - not starting"; exit 0; }
+      RUNDIR=$(dirname "$SOCK")
+      OWNER=$(stat -c %U "$RUNDIR")
+      export XDG_RUNTIME_DIR="$RUNDIR"
+      export WAYLAND_DISPLAY=$(basename "$SOCK")
+      # su -p keeps this env, so point caches somewhere writable. busybox has no getent.
+      export HOME=$(awk -F: -v u="$OWNER" '$1==u{print $6}' /etc/passwd)
+      export XDG_CACHE_HOME="$RUNDIR/cache"
+      mkdir -p "$XDG_CACHE_HOME" && chown "$OWNER" "$XDG_CACHE_HOME"
+      # Without the GPU, GTK4's GL renderer segfaults & WebKit shows white.
+      if ! lsmod | grep -q pvrsrvkm; then
+          export GSK_RENDERER=cairo
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export WEBKIT_DISABLE_COMPOSITING_MODE=1
+          export WEBKIT_DISABLE_DMABUF_RENDERER=1
+      fi
+      echo "Starting $NAME on $WAYLAND_DISPLAY (user $OWNER)"
+      exec su "$OWNER" -p -c "$BIN" >/dev/null 2>&1
+    ) &
+    ;;
+  stop)
+    echo "Stopping $NAME"
+    killall vf2-kiosk 2>/dev/null
+    ;;
+  restart)
+    "$0" stop; sleep 1; "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac
+exit 0

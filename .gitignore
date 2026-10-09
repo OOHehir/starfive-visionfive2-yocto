@@ -1,0 +1,50 @@
+# Yocto build output
+build/
+build-*/
+
+# Cloned layers (recreated from setup-layers.json / README "Source Versions")
+sources/
+
+# Shared Yocto caches (../yocto-artifacts on the build host)
+downloads/
+sstate-cache/
+
+# Session build logs + serial captures (diagnostic, not source)
+*.log
+build-*.log
+serial-*.log
+netboot-*.log
+# Serial/console/build diagnostic dumps (not source)
+scripts/*.out
+scripts/*.err
+scripts/hw-inventory.txt
+scripts/__pycache__/
+
+# Release artifacts: notes/checksums are committed; the large .wic.gz is not
+release/**/*.wic
+release/**/*.wic.gz
+
+# Secrets / credentials — NEVER commit
+wifi.yaml
+*.secret
+*credentials*
+
+# Bring-up scratch working dirs (extracted rootfs, DT/fw analysis)
+scratch_rootfs/
+scratch_dt/
+scratch_fw/
+
+# Editor scratch
+*.swp
+*~
+scratch_keys/
+# Bench capture artifacts
+scripts/*.console
+scripts/*.log
+scripts/__pycache__/
+scripts/*.out
+scripts/*.err
+private-notes/
+
+# Separate repository: https://github.com/OOHehir/meta-vf2-selftest
+meta-vf2-selftest/

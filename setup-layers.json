@@ -1,0 +1,70 @@
+{
+    "sources": {
+        "bitbake": {
+            "git-remote": {
+                "branch": "master",
+                "describe": "",
+                "remotes": {
+                    "origin": {
+                        "uri": "https://git.openembedded.org/bitbake"
+                    }
+                },
+                "rev": "37b9c56ae3b2294ad170859a638c879910c82c59"
+            },
+            "path": "bitbake"
+        },
+        "meta-openembedded": {
+            "git-remote": {
+                "branch": "master",
+                "describe": "",
+                "remotes": {
+                    "origin": {
+                        "uri": "https://github.com/openembedded/meta-openembedded.git"
+                    }
+                },
+                "rev": "ca3cf5fe14bed658890bac643cced054932fcb51"
+            },
+            "path": "meta-openembedded"
+        },
+        "meta-riscv": {
+            "git-remote": {
+                "branch": "master",
+                "describe": "",
+                "remotes": {
+                    "origin": {
+                        "uri": "https://github.com/riscv/meta-riscv.git"
+                    }
+                },
+                "rev": "38333d490731fcebb4db8c55da504d3f5a829b26"
+            },
+            "path": "meta-riscv"
+        },
+        "meta-yocto": {
+            "git-remote": {
+                "branch": "master",
+                "describe": "",
+                "remotes": {
+                    "origin": {
+                        "uri": "https://git.yoctoproject.org/meta-yocto"
+                    }
+                },
+                "rev": "49a2b44583968d321b3195bfd0cb2232dff13950"
+            },
+            "path": "meta-yocto"
+        },
+        "oe-core": {
+            "git-remote": {
+                "branch": "master",
+                "describe": "",
+                "remotes": {
+                    "origin": {
+                        "uri": "https://git.openembedded.org/openembedded-core"
+                    }
+                },
+                "rev": "cc848c403aa3832453f1adfaa45411b8b72b9363"
+            },
+            "path": "oe-core"
+        }
+    },
+    "version": "1.0"
+}

@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: GPL-2.0 OR MIT
+/*
+ * VisionFive 2 v1.3B + Luckfox 10.1-DSI-TOUCH-A (ILI9881C 800x1280, 2-lane);
+ * a separate DTB so the stock HDMI-only one stays available.
+ */
+
+/dts-v1/;
+
+#include "jh7110-starfive-visionfive-2-v1.3b.dts"
+
+/ {
+	model = "StarFive VisionFive 2 v1.3B + 10.1in DSI panel";
+};
+/* No power-supply: REGULATOR_FIXED_VOLTAGE is off, so a fixed regulator would
+ * defer the panel forever; without one it gets a dummy. */
+
+/* The DSI host binds one device only. Disabled, not deleted: dsi1_output still
+ * references its endpoint. */
+&panel_radxa {
+	status = "disabled";
+};
+
+&i2c2 {
+	/* The stock guesses are wrong for this panel. seeed is deleted to free 0x45;
+	 * &dsi0_output is repointed below, so its endpoint may go. */
+	/delete-node/ seeed_plane_i2c@45;
+	/delete-node/ touchscreen@14;
+	/delete-node/ tinker_ft5406@38;
+
+	ws_backlight: backlight@45 {
+		compatible = "waveshare,dsi-backlight";
+		reg = <0x45>;
+		default-brightness-level = <200>;
+		max-brightness-level = <255>;
+		min-brightness-level = <0>;
+	};
+
+	/* No INT line is routed to the host: polled via 0007-goodix-touch-poll-mode. */
+	gt9271: touchscreen@5d {
+		compatible = "goodix,gt9271";
+		reg = <0x5d>;
+	};
+};
+
+&mipi_dsi {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	panel@0 {
+		compatible = "waveshare,10inch1";
+		reg = <0>;
+		dsi,lanes = <2>;
+		/* 70 MHz * 24 bpp / 2 lanes; must also be an exact m31 PLL table
+		 * entry (7110-m31-dphy.h, 10 MHz steps). */
+		dsi,hs-rate = <840000000>;
+		backlight = <&ws_backlight>;
+		rotation = <270>;
+
+		port {
+			ili_panel_in: endpoint {
+				remote-endpoint = <&dsi0_output>;
+			};
+		};
+	};
+};
+
+&dsi0_output {
+	remote-endpoint = <&ili_panel_in>;
+};

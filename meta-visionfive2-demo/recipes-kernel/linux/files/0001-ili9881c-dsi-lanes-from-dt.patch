@@ -1,0 +1,54 @@
+ili9881c: read DSI lane count + HS rate from the DT; drop non-continuous clock
+
+Drive an ILI9881C panel on the StarFive JH7110 cdns-dsi host (VisionFive 2):
+ - Read "dsi,lanes" (driver hardcodes 4; this panel + the JH7110 2-lane DSI
+   port are 2-lane).
+ - Read "dsi,hs-rate" -> dsi->hs_rate. The cdns-dsi host programs the M31 DPHY
+   from dsi->hs_rate at the first DSI transfer (panel prepare, before the host
+   recomputes the clock at bridge-enable; the vendor bridge has no pre_enable).
+   With hs_rate = 0 the M31 PHY matches no PLL entry, programs nothing, and its
+   PLL-lock poll busy-waits forever -> silent hard hang at the fbdev modeset.
+   The jadard panel driver sets hs_rate for the same reason.
+ - Drop MIPI_DSI_CLOCK_NON_CONTINUOUS from am8001280g: the vendor host/PHY were
+   only validated with a continuous clock.
+
+Upstream-Status: Inappropriate [board/vendor-kernel integration]
+
+--- a/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c	2026-07-14 21:26:56.203827323 +0100
++++ b/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c	2026-07-14 21:26:56.226063569 +0100
+@@ -10,6 +10,7 @@
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/property.h>
+ 
+ #include <linux/gpio/consumer.h>
+ #include <linux/regulator/consumer.h>
+@@ -1532,6 +1533,18 @@
+ 	dsi->mode_flags = ctx->desc->mode_flags;
+ 	dsi->format = MIPI_DSI_FMT_RGB888;
+ 	dsi->lanes = 4;
++	/* DT overrides: this panel + the JH7110 2-lane DSI port are 2-lane; and
++	 * the cdns-dsi host programs the M31 DPHY from dsi->hs_rate at the FIRST
++	 * DSI transfer (panel prepare, before the host recomputes the clock at
++	 * bridge-enable - the vendor bridge has no pre_enable). With hs_rate 0 the
++	 * M31 PHY matches no PLL entry and its lock poll spins forever -> hang. */
++	device_property_read_u32(&dsi->dev, "dsi,lanes", &dsi->lanes);
++	{
++		u32 hs_rate;
++
++		if (!device_property_read_u32(&dsi->dev, "dsi,hs-rate", &hs_rate))
++			dsi->hs_rate = hs_rate;
++	}
+ 
+ 	return mipi_dsi_attach(dsi);
+ }
+@@ -1587,7 +1600,7 @@
+ 	.init_length = ARRAY_SIZE(am8001280g_init),
+ 	.mode = &am8001280g_default_mode,
+ 	.mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
+-		      MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_LPM,
++		      MIPI_DSI_MODE_LPM,
+ };
+ 
+ static const struct of_device_id ili9881c_of_match[] = {

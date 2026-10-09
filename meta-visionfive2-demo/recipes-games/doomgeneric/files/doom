@@ -1,0 +1,4 @@
+#!/bin/sh
+# Extra arguments pass through to doomgeneric (e.g. -warp, -skill).
+WAD=/usr/share/games/doom/freedoom1.wad
+exec /usr/bin/doomgeneric -iwad "$WAD" "$@"

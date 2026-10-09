@@ -1,0 +1,34 @@
+phy: m31: dphy-tx0: bound the PLL-lock wait with a timeout
+
+reset() busy-waited on the DPHY PLL lock with a bare `while(!is_pll_locked());`.
+If the PLL is never programmed - e.g. sys_m31_dphy_tx_configure() was called
+with a bitrate that matches no entry in the m31 table (notably 0), so it writes
+no PLL registers - this spins forever, hard-hanging the CPU. It bites at the
+DRM fbdev initial modeset, which runs under console_lock, so the hang is silent
+(no printk reaches the console). Bound the wait (~100 ms) and log an error so a
+misconfiguration is a recoverable modeset failure instead of a dead board.
+
+Upstream-Status: Inappropriate [vendor-kernel hardening]
+
+--- a/drivers/phy/m31/phy-m31-dphy-tx0.c	2026-07-14 21:27:38.581683429 +0100
++++ b/drivers/phy/m31/phy-m31-dphy-tx0.c	2026-07-14 21:27:38.604069828 +0100
+@@ -210,8 +210,17 @@
+ 	dev_info(dphy->dev, "2 SET_U0_MIPITX_DPHY_RESETB\n");
+ 
+     if (!assert) {
+-		while(!is_pll_locked(dphy));
+-		dev_info(dphy->dev, "MIPI dphy-tx # PLL Locked\n");
++		int timeout = 100000;
++
++		/* Bound the PLL-lock wait: an unprogrammed PLL (e.g. an unknown
++		 * bitrate that matched no table entry) would otherwise busy-wait
++		 * here forever and hard-hang the CPU under console_lock. */
++		while (!is_pll_locked(dphy) && --timeout)
++			udelay(1);
++		if (timeout <= 0)
++			dev_err(dphy->dev, "MIPI dphy-tx # PLL lock TIMEOUT\n");
++		else
++			dev_info(dphy->dev, "MIPI dphy-tx # PLL Locked\n");
+     }
+ }
+ 
