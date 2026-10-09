@@ -9,6 +9,7 @@ Usage:
   echo -e 'ip -br link\\ndmesg | tail' | vf2-shell.py
 """
 import argparse
+import re
 import sys
 import time
 
@@ -46,19 +47,29 @@ def ensure_shell(ser):
         read_until(ser, PROMPT, 3, echo=False)
 
 
+MARKER = "___END___"
+# The echoed command line holds "$?", not digits, so only the real output matches.
+# The tty turns "\n" into "\r\n" (ONLCR); a plain "\n" also matches.
+END_RE = re.compile(MARKER.encode() + rb"(\d+)\r?\n")
+
+
 def run(ser, cmd, tmo=25):
-    marker = "___END___"
     print(f"\n\033[1m$ {cmd}\033[0m", flush=True)
     ser.reset_input_buffer()
-    # The echoed command line holds "$?", not "0", so only the real output matches;
-    # draining to the prompt keeps the next command from interleaving.
-    ser.write((cmd + f"\recho {marker}$?\r").encode()); ser.flush()
-    out, hit = read_until(ser, (marker + "0").encode() + b"\n", tmo)
-    if not hit:
-        out2, hit = read_until(ser, marker.encode(), 3)
-    read_until(ser, PROMPT, 3)  # drain trailing prompt
-    if not hit:
+    ser.write((cmd + f"\recho {MARKER}$?\r").encode()); ser.flush()
+    out = bytearray(); t = time.time(); m = None
+    while m is None and time.time() - t < tmo:
+        b = ser.read(256)
+        if b:
+            out += b
+            sys.stdout.buffer.write(b); sys.stdout.buffer.flush()
+            m = END_RE.search(out)
+    # Drain to the prompt so the next command does not interleave.
+    read_until(ser, PROMPT, 3)
+    if m is None:
         print(f"\n[WARN] no end-marker after {tmo}s", flush=True)
+    elif m.group(1) != b"0":
+        print(f"\n[WARN] exit status {m.group(1).decode()}", flush=True)
 
 
 def main():
