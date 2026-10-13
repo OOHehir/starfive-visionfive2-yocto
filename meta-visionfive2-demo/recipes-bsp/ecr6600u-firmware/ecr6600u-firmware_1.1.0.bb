@@ -5,6 +5,7 @@ from starfive-tech/buildroot @ JH7110_VisionFive2_devel \
 (package/starfive/starfive-firmware/ECR6600U-usb-wifi); the \
 eswincomputing/eswin_6600u repo firmware is known NOT to work with this \
 driver. cfg from the kernel tree (drivers/net/wireless/eswin)."
+HOMEPAGE = "https://github.com/starfive-tech/buildroot"
 # No published licence, & oe-core no longer accepts bare "CLOSED": the LicenseRef
 # points at a provenance notice instead.
 LICENSE = "LicenseRef-ecr6600u-firmware-CLOSED"

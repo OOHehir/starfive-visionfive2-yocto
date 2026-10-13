@@ -35,9 +35,11 @@ case "$1" in
       RUNDIR=$(dirname "$SOCK")
       OWNER=$(stat -c %U "$RUNDIR")
       export XDG_RUNTIME_DIR="$RUNDIR"
-      export WAYLAND_DISPLAY=$(basename "$SOCK")
+      WAYLAND_DISPLAY=$(basename "$SOCK")
+      export WAYLAND_DISPLAY
       # su -p keeps this env, so point caches somewhere writable. busybox has no getent.
-      export HOME=$(awk -F: -v u="$OWNER" '$1==u{print $6}' /etc/passwd)
+      HOME=$(awk -F: -v u="$OWNER" '$1==u{print $6}' /etc/passwd)
+      export HOME
       export XDG_CACHE_HOME="$RUNDIR/cache"
       mkdir -p "$XDG_CACHE_HOME" && chown "$OWNER" "$XDG_CACHE_HOME"
       # Without the GPU, GTK4's GL renderer segfaults & WebKit shows white.

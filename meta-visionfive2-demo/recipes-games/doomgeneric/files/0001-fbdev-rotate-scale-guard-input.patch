@@ -1,6 +1,8 @@
 fbdev backend: rotate 90 CCW + 2x scale for the portrait 800x1280 DSI panel,
 guard missing /dev/input, attract-demo fallback without a keyboard.
 
+Signed-off-by: OOHehir <40183643+OOHehir@users.noreply.github.com>
+
 Upstream-Status: Inappropriate [board-specific demo configuration]
 
 diff --git a/doomgeneric/doomgeneric_linuxvt.c b/doomgeneric/doomgeneric_linuxvt.c

@@ -32,6 +32,3 @@ do_install() {
     install -d ${D}${sysconfdir}/init.d
     install -m0755 ${UNPACKDIR}/doom.init ${D}${sysconfdir}/init.d/doom
 }
-
-# TODO(owen): confirm this is still needed; Makefile.linuxvt does not strip.
-INSANE_SKIP:${PN} += "already-stripped"

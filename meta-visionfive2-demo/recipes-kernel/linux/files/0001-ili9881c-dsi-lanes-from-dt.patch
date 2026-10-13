@@ -12,6 +12,8 @@ Drive an ILI9881C panel on the StarFive JH7110 cdns-dsi host (VisionFive 2):
  - Drop MIPI_DSI_CLOCK_NON_CONTINUOUS from am8001280g: the vendor host/PHY were
    only validated with a continuous clock.
 
+Signed-off-by: OOHehir <40183643+OOHehir@users.noreply.github.com>
+
 Upstream-Status: Inappropriate [board/vendor-kernel integration]
 
 --- a/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c	2026-07-14 21:26:56.203827323 +0100

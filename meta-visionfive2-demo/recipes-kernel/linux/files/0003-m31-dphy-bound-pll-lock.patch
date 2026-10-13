@@ -8,6 +8,8 @@ DRM fbdev initial modeset, which runs under console_lock, so the hang is silent
 (no printk reaches the console). Bound the wait (~100 ms) and log an error so a
 misconfiguration is a recoverable modeset failure instead of a dead board.
 
+Signed-off-by: OOHehir <40183643+OOHehir@users.noreply.github.com>
+
 Upstream-Status: Inappropriate [vendor-kernel hardening]
 
 --- a/drivers/phy/m31/phy-m31-dphy-tx0.c	2026-07-14 21:27:38.581683429 +0100

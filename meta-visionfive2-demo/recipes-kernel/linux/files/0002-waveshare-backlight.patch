@@ -7,7 +7,7 @@ backlight MCU at address 0x45.
 
 Source file copied verbatim from the Lyra SDK kernel.
 
-Signed-off-by: Owen <electronicconsult1@gmail.com>
+Signed-off-by: OOHehir <40183643+OOHehir@users.noreply.github.com>
 
 Upstream-Status: Inappropriate [out-of-tree vendor backlight-MCU driver]
 

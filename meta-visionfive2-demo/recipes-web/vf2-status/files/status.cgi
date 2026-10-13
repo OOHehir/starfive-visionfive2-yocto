@@ -31,7 +31,10 @@ MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
 CMA_TOTAL=$(awk '/^CmaTotal/ {printf "%.0f", $2/1024}' /proc/meminfo)
 CMA_FREE=$(awk '/^CmaFree/  {printf "%.0f", $2/1024}' /proc/meminfo)
 
-WIFI_IF=$(ls /sys/class/net/ 2>/dev/null | grep -E '^wl' | head -n1)
+WIFI_IF=
+for d in /sys/class/net/wl*; do
+    [ -e "$d" ] && { WIFI_IF=${d##*/}; break; }
+done
 if [ -n "$WIFI_IF" ]; then
     WIFI_IP=$(ip -4 addr show "$WIFI_IF" 2>/dev/null | awk '/inet / {print $2}')
     WIFI_SSID=$(iw dev "$WIFI_IF" link 2>/dev/null | awk '/SSID/ {print $2}')

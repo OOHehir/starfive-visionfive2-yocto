@@ -22,6 +22,8 @@ HFP-adjusted rate) -> panel prepare (init DCS on a live link) -> host .enable
 (video stream) -> panel enable (display-on). pm_runtime stays balanced against
 the existing pm_runtime_put in .disable.
 
+Signed-off-by: OOHehir <40183643+OOHehir@users.noreply.github.com>
+
 Upstream-Status: Inappropriate [vendor-driver integration]
 
 --- a/drivers/gpu/drm/verisilicon/starfive_drm_dsi.c

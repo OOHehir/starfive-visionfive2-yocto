@@ -11,7 +11,7 @@ require recipes-graphics/images/core-image-weston.bb
 # The wks bakes the DSI board DTB into the GRUB config on /boot.
 WKS_FILE = "visionfive2-demo.wks"
 
-IMAGE_INSTALL += " \
+IMAGE_INSTALL += "\
     vf2-status \
     vf2-kiosk \
     doomgeneric \

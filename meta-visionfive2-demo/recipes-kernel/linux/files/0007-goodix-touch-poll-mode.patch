@@ -12,6 +12,8 @@ Differs from the RK3506 original only in the branch condition: this vendor
 tree derives the IRQ from gpiod_to_irq(ts->gpiod_int) rather than
 client->irq, so branch on ts->gpiod_int.
 
+Signed-off-by: OOHehir <40183643+OOHehir@users.noreply.github.com>
+
 Upstream-Status: Inappropriate [vendor poll fallback for board with no touch IRQ]
 
 --- a/drivers/input/touchscreen/goodix.h	2026-07-16 10:53:51.491516742 +0100

@@ -25,6 +25,8 @@ power-cycle here is what makes that following modeset succeed (without it the
 panel stays black indefinitely). So: re-arm, poll only briefly, return, and let
 the queued fb-client modeset complete the recovery.
 
+Signed-off-by: OOHehir <40183643+OOHehir@users.noreply.github.com>
+
 Upstream-Status: Inappropriate [vendor-driver integration]
 
 --- a/drivers/gpu/drm/verisilicon/starfive_drm_dsi.c
