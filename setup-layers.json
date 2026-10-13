@@ -35,7 +35,7 @@
                         "uri": "https://github.com/riscv/meta-riscv.git"
                     }
                 },
-                "rev": "38333d490731fcebb4db8c55da504d3f5a829b26"
+                "rev": "0a95d9ec3716ae744bca14518071e3a5daa25111"
             },
             "path": "meta-riscv"
         },

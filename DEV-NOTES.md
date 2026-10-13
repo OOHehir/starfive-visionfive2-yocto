@@ -39,6 +39,10 @@ still sees whatever `bootdelay`/`preboot` the bench left there. A
   interrupt) via the rc.pvr shutdown K-link's rmmod.
 - **Fix:** ship start-only init links
   (`visionfive2-pvr-graphics_%.bbappend`: `INITSCRIPT_PARAMS = "start 20 2 3 4 5 ."`).
+- **Superseded:** fixed in meta-riscv by
+  [#713](https://github.com/riscv/meta-riscv/pull/713) (`0a95d9e`), which
+  turns the `BUG_ON` in `pvr_devices_unregister()` into an early return. The
+  bbappend was dropped when the pin moved to that commit.
 
 ### dc8200 cannot scan out PVR-tiled GBM buffers
 - **Symptom:** GL-composited weston "works" but the panel shows a thin

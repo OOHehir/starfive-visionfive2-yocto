@@ -14,8 +14,6 @@ rm -rf "$WORK"; mkdir -p "$WORK"; cd "$WORK"
 zcat "$SRC" | cpio -idm --quiet
 
 # GPU on by default: the PVR mesa fork has no software fallback, so WebKit needs it.
-# K links always go: rc.pvr's shutdown rmmod panics in pvr_exit on every reboot.
-rm -f etc/rc[0-6].d/K??rc.pvr
 if [ "${VF2_GPU:-1}" = 0 ]; then
     rm -f etc/rc[2-5].d/S??rc.pvr etc/modules-load.d/pvrsrvkm.conf
     echo "[*] VF2_GPU=0: GPU autoload disabled (weston -> pixman)"

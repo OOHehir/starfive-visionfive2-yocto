@@ -52,9 +52,10 @@ audio, CAN, etc. all present natively → **the vf2-hdmi / vf2-peripherals overl
 
 ## 2. GPU (pvrsrvkm) autoload disabled  — DONE (obsolete: GPU works; see #3)
 **Resolution (2026-07-16):** #3's RANDSTRUCT fix made the GPU safe to load, so
-autoload is back ON in the demo image. What survives in recipes: rc.pvr ships
-**start-only** init links (`visionfive2-pvr-graphics` bbappend) because the
-DDK's shutdown rmmod panics in `pvr_exit`. Historical detail below.
+autoload is back ON in the demo image. The start-only rc.pvr init links that
+worked around the `pvr_exit` panic on shutdown were dropped once meta-riscv
+[#713](https://github.com/riscv/meta-riscv/pull/713) fixed it. Historical
+detail below.
 - **Now:** `nogpu` initramfs = original rootfs with `etc/rc[2-5].d/S20rc.pvr` start links
   and `etc/modules-load.d/pvrsrvkm.conf` removed, repacked
   (`core-image-weston-visionfive2-nogpu.cpio.gz`). Plus `modprobe.blacklist=pvrsrvkm` on

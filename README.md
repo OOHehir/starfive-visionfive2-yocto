@@ -48,7 +48,6 @@ All in `meta-visionfive2-demo` — no forks of the BSP or kernel source, only
 | `0006` VSG self-heal | Upstream-known cdns-dsi first-enable race: the video stream generator misses the first vsync and never starts. Self-heal: PHY power-cycle + re-arm; the next fb-client modeset completes recovery. Deterministic cold-boot panel |
 | `0007` touch poll | The converter cable routes no touch INT line — GT9271 driven by a 60 fps I2C poll instead |
 | `WESTON_DISABLE_GBM_MODIFIERS` | The dc8200 display controller cannot scan out PVR tiled/modifier buffers (symptom: a column of dots). Linear buffers → GPU-composited Weston works |
-| rc.pvr start-only links | The DDK module panics in `pvr_exit` on rmmod — shutdown links removed so every reboot is clean |
 | lighttpd keep-alive 30 s | Default 5 s idle races the dashboard's 5 s refresh; libsoup surfaces it as "Connection terminated unexpectedly" |
 
 ## Build from source
@@ -136,7 +135,7 @@ Pinned in `setup-layers.json` (the source of truth):
 | openembedded-core | `openembedded/openembedded-core` | `master` | `cc848c40` |
 | meta-yocto | `yoctoproject/meta-yocto` | `master` | `49a2b445` |
 | meta-openembedded | `openembedded/meta-openembedded` | `master` | `ca3cf5fe` |
-| meta-riscv | `riscv/meta-riscv` | `master` | `38333d49` |
+| meta-riscv | `riscv/meta-riscv` | `master` | `0a95d9ec` |
 
 ## Repo guide
 
