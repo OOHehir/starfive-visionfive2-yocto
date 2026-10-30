@@ -41,3 +41,9 @@ private-notes/
 
 # Separate repository: https://github.com/OOHehir/meta-vf2-selftest
 meta-vf2-selftest/
+
+# Local TFTP root served by scripts/ens4-dhcp.sh
+tftp/
+
+# Held by scripts/hw-ci-run.sh while it uses the board
+.bench.lock
