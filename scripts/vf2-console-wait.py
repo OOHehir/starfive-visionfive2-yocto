@@ -2,9 +2,11 @@
 """Reboot the VF2 from its serial console & log the console until a line matches.
 
 Works from a Linux shell, a login prompt or the U-Boot prompt. Exit 0 when
---until matched, 1 on timeout.
+--until matched, 1 on timeout. --poweroff shuts Linux down instead of
+rebooting (the U-Boot prompt has no poweroff, so it is left as it is).
 
-Usage: vf2-console-wait.py --until REGEX [--tmo SECS] [--log FILE] [--no-reboot]
+Usage: vf2-console-wait.py --until REGEX [--tmo SECS] [--log FILE]
+                           [--no-reboot | --poweroff]
 """
 import argparse
 import re
@@ -22,6 +24,7 @@ def main():
     ap.add_argument("--tmo", type=int, default=900)
     ap.add_argument("--log", default="/dev/null")
     ap.add_argument("--no-reboot", action="store_true")
+    ap.add_argument("--poweroff", action="store_true")
     args = ap.parse_args()
 
     until = re.compile(args.until.encode())
@@ -45,11 +48,14 @@ def main():
         read(3)
         tail = bytes(out[-200:])
         if tail.rstrip().endswith(b"StarFive #"):
+            if args.poweroff:
+                print("\n[console-wait] at the U-Boot prompt: nothing to shut down", file=sys.stderr)
+                return 1
             ser.write(b"reset\r")
         else:
             if b"login:" in tail:
                 ser.write(b"root\r"); ser.flush(); read(4)
-            ser.write(b"\rreboot\r")
+            ser.write(b"\rpoweroff\r" if args.poweroff else b"\rreboot\r")
         ser.flush()
         del out[:]
 

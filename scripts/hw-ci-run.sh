@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # On-demand hardware test of meta-riscv master on the VisionFive 2 bench.
 # Per leg: build vf2-selftest-image, netboot it over ens4, collect the boot-time
-# self-test & compare it with that leg's previous run; then boot the SD card again.
+# self-test & compare it with that leg's previous run; then power the board off.
 # Usage: hw-ci-run.sh [vendor|mainline|next|all]...     (default: all)
 #   vendor    meta-riscv's machine kernel, linux-starfive-dev
 #   mainline  meta-riscv's linux-mainline (stable), the reference for next
@@ -33,7 +33,6 @@ exec 9>"$top/.bench.lock"
 flock -n 9 || die "bench busy: another run holds $top/.bench.lock"
 [ -e "$TFTP/boot.scr" ] && die "a netboot is staged ($TFTP/boot.scr); remove it with scripts/stage-ens4-netboot.sh --off if the bench is free"
 pgrep -x dnsmasq >/dev/null || die "dnsmasq is not running: sudo scripts/ens4-dhcp.sh"
-[ -e "$PORT" ] || die "no serial console at $PORT"
 
 # CI builds from its own detached worktrees, so ad hoc checkouts stay untouched.
 say "updating sources to upstream master"
@@ -122,6 +121,33 @@ EOF_PY
     return 1
 }
 
+# The board is powered off after each run, so it (and a serial adapter on the
+# same supply) may be off: wait for someone to switch it on & for a prompt (it
+# boots its SD card to login:), as a reboot typed mid-boot is lost.
+board_on() {
+    python3 - "$PORT" <<'EOF_PY'
+import os, re, serial, sys, time
+port, t0, told = sys.argv[1], time.time(), False
+prompt = re.compile(rb"(login: |# |StarFive # )$")
+while time.time() - t0 < 600:
+    if os.path.exists(port):
+        try:
+            s = serial.Serial(port, 115200, timeout=0.3)
+            s.write(b"\r"); t = time.time(); buf = b""
+            while time.time() - t < 5:
+                buf = (buf + s.read(256))[-200:]
+                if prompt.search(buf):
+                    sys.exit(0)
+        except serial.SerialException:
+            pass
+    if not told:
+        print(f"\n[hw-ci] no answer on {port}: switch the board on (waiting up to 10 min)", flush=True)
+        told = True
+    time.sleep(5)
+sys.exit(1)
+EOF_PY
+}
+
 summary=""
 for leg in $legs; do
     b="$top/build-ci-$leg"
@@ -145,6 +171,10 @@ for leg in $legs; do
     fi
 
     deploy="$b/tmp/deploy/images/visionfive2"
+    if ! board_on; then
+        summary="$summary\n$leg: NO RESULTS (board did not answer on $PORT)"
+        continue
+    fi
     say "$leg: netbooting"
     "$top/scripts/stage-ens4-netboot.sh" "$deploy/Image" \
         "$deploy/jh7110-starfive-visionfive-2-v1.3b.dtb" \
@@ -176,7 +206,10 @@ for leg in $legs; do
     fi
 done
 
-# Hand the bench back on its SD card.
-say "rebooting the board to its SD card"
-python3 "$top/scripts/vf2-console-wait.py" --port "$PORT" --tmo 120 --until 'login:' > /dev/null || true
+# Shut the board down cleanly from whatever it runs; the next power-on boots
+# its SD card, as no netboot is staged any more.
+say "powering the board off"
+python3 "$top/scripts/vf2-console-wait.py" --port "$PORT" --tmo 120 --poweroff \
+    --until 'reboot: Power down' > /dev/null ||
+    summary="$summary\nboard did not confirm power-down; check it before unplugging"
 printf '%b\n' "$summary"
